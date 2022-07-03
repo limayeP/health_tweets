@@ -270,8 +270,6 @@ def plot_dist_of_processed_words(df_all):
     """
     # list of cleaned words without lemmatized all together 
     fi = list(df_all["filtered_words"])
-    fil_wrds = [val for sublist in fi for val in sublist]
-
     # list of cleaned words with lemmatized all together 
     le_fi = list(df_all["lemmatized_words"])
     le_fil_wrds = [val for sublist in fi for val in sublist]
@@ -314,13 +312,11 @@ def eda(df):
             terms["handles"].append(re.sub(r":", "", w.lower()))
     return terms
 
-
 def get_raw_tweets_hastags_handles(df_all):
     """
     Input: cleaned, tagged and lemmatized dataframe
     Output: subsetted dataframe with hashtags_handles
     """
-
     terms = eda(df_all)
     return terms
 
@@ -392,7 +388,7 @@ def dist_tweets_by_news_sources(df_all):
     plt.tight_layout()
     plt.show()
 
-
+###########################################################
 def get_top_kmeans_words(n_terms, X, clusters, vec):
     """This function returns the keywords for each centroid of the KMeans"""
     df = pd.DataFrame(X.todense()).groupby(clusters).mean() # groups the TF-IDF vector by cluster
