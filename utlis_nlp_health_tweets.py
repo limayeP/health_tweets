@@ -134,6 +134,19 @@ def organize_dataframe(df):
     df_all["raw_words"] = df_all["text"].apply((lambda x: my_tokenizer(x)))
     return df_all
 
+def plot_word_distribution(df_all):
+    """
+    Input: raw organized dataframe
+    Output:  Distribution of top 10 words  without preprocessing
+    """
+    raw = [val for sublist in df_all["raw_words"] for val in sublist]
+    count_raw = Counter(raw).most_common(10)
+    df_raw = pd.DataFrame(count_raw, columns=['unprocessed words','frequency'])
+    df_raw.plot.bar(x="unprocessed words", y="frequency", rot=0, title="Top trending unprocessed words")
+    plt.tight_layout()
+    plt.ylabel = ""
+    plt.show()
+
 def clean_text(tweet):
     # To remove
     tweet = re.sub(r"\b#.*\b", "", tweet) # hashtags
