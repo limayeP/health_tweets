@@ -44,6 +44,9 @@ sid = SentimentIntensityAnalyzer()
 ####################################################################################
 
 def read_tweet(fn, encoding="UTF-8"):
+    """
+    Goal: REad the tweet data
+    """
     file_id = open(fn, "r", encoding=encoding)
     lines = file_id.readlines()
     t = {"userid": [], "date": [], "text": []}
@@ -54,9 +57,29 @@ def read_tweet(fn, encoding="UTF-8"):
             t["userid"].append(s[0])
             t["date"].append(s[1])
             t["text"].append("".join(s[2:]))
-    df = pd.DataFrame.from_dict(t)
-    df.text = df.text.str.encode('ascii', 'ignore').str.decode('ascii')
+    bf = pd.DataFrame.from_dict(t)
+    bf.text = bf.text.str.encode('ascii', 'ignore').str.decode('ascii')
+    return bf
+
+def tweet_to_dataframe(datapn, file_extension = "*.txt"):
+    """
+    Input(1): datapn = "tweets" (folder where tweets are located)
+    Input(2): file_extension. The defualt is "*.txt"
+    Output: 
+    
+    """
+    source = []
+    df = {}
+
+    for fn in glob.glob(os.path.join(datapn, "*.txt")):
+        file_name, file_extension = os.path.splitext(fn)
+        source = os.path.basename(file_name)
+        try:
+            df[source] = read_tweet(fn)
+        except UnicodeDecodeError:
+            df[source] = read_tweet(fn, encoding="ISO-8859-1")
     return df
+
 
 def remove_non_ascii(tweet):
     tweet = re.sub(r"\\x\d{2}", "", tweet)
