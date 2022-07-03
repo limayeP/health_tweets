@@ -45,7 +45,7 @@ sid = SentimentIntensityAnalyzer()
 
 def read_tweet(fn, encoding="UTF-8"):
     """
-    Goal: REad the tweet data
+    Goal: Read the tweet data
     """
     file_id = open(fn, "r", encoding=encoding)
     lines = file_id.readlines()
@@ -64,9 +64,8 @@ def read_tweet(fn, encoding="UTF-8"):
 def tweet_to_dataframe(datapn, file_extension = "*.txt"):
     """
     Input(1): datapn = "tweets" (folder where tweets are located)
-    Input(2): file_extension. The defualt is "*.txt"
+    Input(2): file_extension. The default is "*.txt"
     Output: 
-    
     """
     source = []
     df = {}
@@ -80,12 +79,17 @@ def tweet_to_dataframe(datapn, file_extension = "*.txt"):
             df[source] = read_tweet(fn, encoding="ISO-8859-1")
     return df
 
-
 def remove_non_ascii(tweet):
     tweet = re.sub(r"\\x\d{2}", "", tweet)
     tweet = re.sub(r"http?:\/\/[^\s]*", "", tweet)
     return tweet
 
+def get_hashes(w):
+    wt_words = []
+    for tweet in w.split(' '):
+        if tweet.startswith('#'):
+            wt_words.append(tweet.strip(','))
+    return wt_words
 
 def my_tokenizer(in_string):
     """
@@ -97,6 +101,38 @@ def my_tokenizer(in_string):
     tokens = tokenizer.tokenize(in_string)
     return tokens
 
+def organize_dataframe(df):
+    """
+    Input: dataframe to be organized
+    Ouput: dataframe with columns: 'userid', 'date', 'text', 
+                                  'news_source', 'hashtags', 'raw_words'
+           following was done to the dataframe
+          # joining the 16 dataframes by rows
+          # initilaize a dataframe list
+          # Remove non-ascii characters and the urls
+    """
+    dflist = []
+    # Create a new column
+    for k, v in df.items():
+        df[k]['news_source'] = k
+
+    for k, v in df.items():
+        dflist.append(v)
+    # joining the 16 dataframes by rows
+    df_all = pd.concat(dflist, axis=0)
+    # Remove non-ascii characters and the urls
+    df_all["text"] = df_all["text"].apply(remove_non_ascii)
+    # Replace blank spaces with NANs and remove rows qith NANs
+    df_all['text'].replace('', np.nan, inplace=True)
+    df_all.dropna(subset=['text'], inplace=True)
+    print(f"The total number of tweets are {len(df_all)}")
+
+    # Collect hashtags into the main dataframe
+    df_all["hashtags"] = df_all["text"].apply(lambda x: get_hashes(x))
+
+    # tokenize words without processing
+    df_all["raw_words"] = df_all["text"].apply((lambda x: my_tokenizer(x)))
+    return df_all
 
 def clean_text(tweet):
     # To remove
@@ -155,13 +191,6 @@ def us(s):
             if re.sub(r"\b\w{2}\b","",i, ):
                 lst.append(i)
     return lst
-
-def get_hashes(w):
-    wt_words = []
-    for tweet in w.split(' '):
-        if tweet.startswith('#'):
-            wt_words.append(tweet.strip(','))
-    return wt_words
 
 def get_hashtags_by_list(lst):
     toplist = ['#healthtalk', '#nhs', '#ebola', '#getfit','#latfit', '#obamacare', '#weightloss','#health', '#fitness', '#recipe']
