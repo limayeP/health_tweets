@@ -299,23 +299,6 @@ def plot_tweets_by_year(df_all):
     plt.title("Number of tweets by year")
     plt.show()
 
-    
-
-def get_hashtags_by_list(lst):
-    toplist = ['#healthtalk', '#nhs', '#ebola', '#getfit','#latfit', '#obamacare', '#weightloss','#health', '#fitness', '#recipe']
-    for l in lst:
-        if l in toplist:
-            return True
-        else:
-            return False
-
-        
-def find_hash(sentence):
-    if re.findall(r'#ebola'," ".join(sentence), re.IGNORECASE):
-        return True
-    else:
-        return False
-
 def eda(df):
     terms = {"raw": [], "hashed": [],"handles":[]}
     text_lst = list(df["text"])
@@ -330,6 +313,84 @@ def eda(df):
         if re.findall( r'^@.+', w):
             terms["handles"].append(re.sub(r":", "", w.lower()))
     return terms
+
+
+def get_raw_tweets_hastags_handles(df_all):
+    """
+    Input: cleaned, tagged and lemmatized dataframe
+    Output: subsetted dataframe with hashtags_handles
+    """
+
+    terms = eda(df_all)
+    return terms
+
+def plot_hashtags_piechart(terms):
+    """
+    Input: subsetted dataframe with hashtags_handles
+    Output: Plot the distribution of hashtags
+    """
+    # Plot hashtags
+    df_hashtags = pd.DataFrame({"hashtag": terms["hashed"]})
+    df_hashtags['hashtag'].value_counts().head(10).plot(kind='pie',
+                                                        autopct='%.1f%%', radius=1.2)
+    plt.title('Top Trending Hashtags')
+    plt.tight_layout()
+    plt.show()
+    
+def plot_handles_piechart(terms):
+    """
+    Input: subsetted dataframe with hashtags and handles
+    Output: Plot the distribution of handles (also known as mentions)
+    """
+    # Plot distribution of mentions or handles
+    df_handles = pd.DataFrame({"handles": terms["handles"]})
+    df_handles['handles'].value_counts().head(10).plot(kind='pie',
+                                                        autopct='%.1f%%', radius=1.2)
+    plt.title('Top Trending Twitter Handles')
+    plt.tight_layout()
+    #plt.ylabel('')
+    plt.show()
+
+def find_hash(sentence):
+    if re.findall(r'#ebola'," ".join(sentence), re.IGNORECASE):
+        return True
+    else:
+        return False
+
+def plot_hashtag_ebola_by_year(df_all):
+    """
+    Input: subsetted dataframe with hashtags_handles
+    Output: Plot the distribution of #ebola
+    """
+    # Subset data with #Ebola containing hashtags
+    mask = df_all["hashtags"].apply(lambda x: find_hash(x))
+    mdf = df_all[mask == True]
+
+    # Plot number of tweets containing #Ebola by year
+    fig, ax = plt.subplots()
+    yd = mdf["date"].dt.year
+    zd = mdf['text'].groupby(yd).count()
+    uyd = yd.unique()
+    ax.bar(uyd, zd)
+    ax.set_xticks(uyd)
+    plt.xlabel("year")
+    # plt.ylabel("Number of Ebola tweets")
+    plt.title("Number of Ebola tweets by year")
+    plt.show()
+
+def dist_tweets_by_news_sources(df_all):
+    """
+    Input: subsetted dataframe with hashtags_handles
+    Output: Plot of the distribution of tweets from new sources
+    """
+    nz = df_all['lem_clean_text'].groupby(df_all["news_source"]).count()
+    nz = pd.DataFrame(nz)
+    nz.columns = ["scores"]
+    nz['percentage'] = (nz["scores"]/nz["scores"].sum()*100).round(1)
+    nz = nz.reset_index()
+    nz.plot(x= "news_source", y = "percentage", kind='bar',title="Tweet distribution by newspaper", rot=90)
+    plt.tight_layout()
+    plt.show()
 
 
 def get_top_kmeans_words(n_terms, X, clusters, vec):
