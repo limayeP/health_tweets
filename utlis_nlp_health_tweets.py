@@ -205,6 +205,50 @@ def us(s):
                 lst.append(i)
     return lst
 
+
+def clean_tweets(df_all):
+    """
+    IMPORTANT NOTE: nltk.download('omw-1.4')
+    Input: dataframe to be cleaned
+    Output: dataframe where th following was done:
+            tokenize and remove stopwords
+            keep US and UK and remove 2 letter words
+            filter out empty list of words
+            change date to datatime format
+    """
+
+    # Cleaning tweets
+    df_all["filtered_text"] = df_all["text"].apply(lambda x: clean_text(x))
+    # Remove rows with empty strings
+    df_all['filtered_text'].replace('', np.nan, inplace=True)
+    df_all.dropna(subset=['filtered_text'], inplace=True)
+    # Tokenize and remove stopwords
+    df_all["filtered_words"] = df_all["filtered_text"].apply(lambda x: remove_stopword_sentiment(my_tokenizer(x)))
+    # Remove empty list of words
+    df_all["filtered_words"] = df_all["filtered_words"].apply(lambda y: np.nan if len(y)==0 else y)
+    df_all.dropna(subset=['filtered_words'], inplace=True)
+    # Keep US and UK and remove 2 letter words
+    df_all["filtered_words"] = df_all["filtered_words"].apply(lambda x: us(x))
+
+    # join filtered words to get cleantext
+    df_all["clean_text"] = df_all["filtered_words"].apply(lambda x: " ".join(x))
+
+    # change date to datatime format
+    df_all["date"] =df_all["date"].apply(lambda x: pd.to_datetime(x))
+    return df_all
+
+def lemmatize_words(q):
+    lemmatizer = WordNetLemmatizer()
+    lms = []
+    pos = 'a'
+    for s in q:
+        if s[1].startswith('NN'):
+            pos = 'n'
+        elif s[1].startswith('VB'):
+            pos = 'v'
+        lms.append(lemmatizer.lemmatize(s[0], pos))
+    return lms
+
 def get_hashtags_by_list(lst):
     toplist = ['#healthtalk', '#nhs', '#ebola', '#getfit','#latfit', '#obamacare', '#weightloss','#health', '#fitness', '#recipe']
     for l in lst:
@@ -255,18 +299,6 @@ def word_word_freq_lists(wordlist, n):
         tmc_cbc_word_frequency.append(freq)
     return tmc_cbc_words, tmc_cbc_word_frequency
 
-
-def lemmatize_words(q):
-    lemmatizer = WordNetLemmatizer()
-    lms = []
-    pos = 'a'
-    for s in q:
-        if s[1].startswith('NN'):
-            pos = 'n'
-        elif s[1].startswith('VB'):
-            pos = 'v'
-        lms.append(lemmatizer.lemmatize(s[0], pos))
-    return lms
 
 
 def build_tfdif_matrix(ngram_range, user_count, text):
