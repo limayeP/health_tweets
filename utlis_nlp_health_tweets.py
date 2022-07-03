@@ -208,7 +208,6 @@ def us(s):
 
 def clean_tweets(df_all):
     """
-    IMPORTANT NOTE: nltk.download('omw-1.4')
     Input: dataframe to be cleaned
     Output: dataframe where th following was done:
             tokenize and remove stopwords
@@ -216,7 +215,6 @@ def clean_tweets(df_all):
             filter out empty list of words
             change date to datatime format
     """
-
     # Cleaning tweets
     df_all["filtered_text"] = df_all["text"].apply(lambda x: clean_text(x))
     # Remove rows with empty strings
@@ -229,10 +227,8 @@ def clean_tweets(df_all):
     df_all.dropna(subset=['filtered_words'], inplace=True)
     # Keep US and UK and remove 2 letter words
     df_all["filtered_words"] = df_all["filtered_words"].apply(lambda x: us(x))
-
     # join filtered words to get cleantext
     df_all["clean_text"] = df_all["filtered_words"].apply(lambda x: " ".join(x))
-
     # change date to datatime format
     df_all["date"] =df_all["date"].apply(lambda x: pd.to_datetime(x))
     return df_all
@@ -248,6 +244,24 @@ def lemmatize_words(q):
             pos = 'v'
         lms.append(lemmatizer.lemmatize(s[0], pos))
     return lms
+
+
+def tag_lemmatize_tweet_words(df_all):
+    """
+    IMPORTANT NOTE: nltk.download('omw-1.4')
+    Input: 
+    Output:
+    """
+    # Get tagging and lemmatizing tweet words
+    df_all["tagged_words"] = [pos_tag(sent) for sent in df_all['filtered_words']]
+    df_all["lemmatized_words"] = df_all["tagged_words"].apply(lambda x: lemmatize_words(x))
+    # Remove empty list of words
+    df_all["lemmatized_words"] = df_all["lemmatized_words"].apply(lambda y: np.nan if len(y)==0 else y)
+    df_all.dropna(subset=['lemmatized_words'], inplace=True)
+
+    # Each tweet cleaned and Lemmatized 
+    df_all["lem_clean_text"] = df_all["lemmatized_words"].apply(lambda x: " ".join(x))
+    return df_all
 
 def get_hashtags_by_list(lst):
     toplist = ['#healthtalk', '#nhs', '#ebola', '#getfit','#latfit', '#obamacare', '#weightloss','#health', '#fitness', '#recipe']
