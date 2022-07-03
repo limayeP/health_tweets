@@ -268,11 +268,9 @@ def plot_dist_of_processed_words(df_all):
     Input: cleaned, tagged and lemmatized dataframe
     Output: Plot the distribution of cleaned, lemmatized words
     """
-    # list of cleaned words without lemmatized all together 
-    fi = list(df_all["filtered_words"])
     # list of cleaned words with lemmatized all together 
     le_fi = list(df_all["lemmatized_words"])
-    le_fil_wrds = [val for sublist in fi for val in sublist]
+    le_fil_wrds = [val for sublist in le_fi for val in sublist]
 
     le_fil =  Counter(le_fil_wrds)
     le_fil_count = Counter(le_fil_wrds).most_common(15)
@@ -385,6 +383,23 @@ def dist_tweets_by_news_sources(df_all):
     nz['percentage'] = (nz["scores"]/nz["scores"].sum()*100).round(1)
     nz = nz.reset_index()
     nz.plot(x= "news_source", y = "percentage", kind='bar',title="Tweet distribution by newspaper", rot=90)
+    plt.tight_layout()
+    plt.show()
+
+def plot_dist_of_top_ngrams(df_all, n=15):
+    """
+    Input(1): cleaned, tagged and lemmatized dataframe
+    Input(2): the number of top ngrams to be plotted
+    Output: Plot the distribution of ngrams
+    """
+    # list of cleaned words with lemmatized all together 
+    le_fi = list(df_all["lemmatized_words"])
+    le_fil_wrds = [val for sublist in le_fi for val in sublist]
+    # calculate a range of ngrams using some handy functions
+    top_grams = Counter(everygrams(le_fil_wrds, min_len=2, max_len=4))
+    top_gm = pd.DataFrame(top_grams.most_common(n))
+    top_gm.columns = ["n-grams","count"]
+    fig = top_gm.plot(kind="bar", x="n-grams", y="count", title=f"Top {n} n-grams in all tweets")
     plt.tight_layout()
     plt.show()
 
