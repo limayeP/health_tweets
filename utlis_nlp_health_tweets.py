@@ -249,8 +249,8 @@ def lemmatize_words(q):
 def tag_lemmatize_tweet_words(df_all):
     """
     IMPORTANT NOTE: nltk.download('omw-1.4')
-    Input: 
-    Output:
+    Input: cleaned dataframe
+    Output: cleaned, tagged and lemmatized dataframe
     """
     # Get tagging and lemmatizing tweet words
     df_all["tagged_words"] = [pos_tag(sent) for sent in df_all['filtered_words']]
@@ -262,6 +262,44 @@ def tag_lemmatize_tweet_words(df_all):
     # Each tweet cleaned and Lemmatized 
     df_all["lem_clean_text"] = df_all["lemmatized_words"].apply(lambda x: " ".join(x))
     return df_all
+
+def plot_dist_of_processed_words(df_all):
+    """
+    Input: cleaned, tagged and lemmatized dataframe
+    Output: Plot the distribution of cleaned, lemmatized words
+    """
+    # list of cleaned words without lemmatized all together 
+    fi = list(df_all["filtered_words"])
+    fil_wrds = [val for sublist in fi for val in sublist]
+
+    # list of cleaned words with lemmatized all together 
+    le_fi = list(df_all["lemmatized_words"])
+    le_fil_wrds = [val for sublist in fi for val in sublist]
+
+    le_fil =  Counter(le_fil_wrds)
+    le_fil_count = Counter(le_fil_wrds).most_common(15)
+
+    le_df_fil = pd.DataFrame(le_fil_count, columns=['processed words','frequency'])
+    le_df_fil.plot.bar(x="processed words", y="frequency", rot=70, title="Top trending words")
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_tweets_by_year(df_all):
+    """
+    Input: cleaned, tagged and lemmatized dataframe
+    Output: Plot the distribution of cleaned, lemmatized words
+    """
+    y = df_all["date"].dt.year
+    z = df_all["lem_clean_text"].groupby(y).count()
+    uy = list(y.unique())
+    plt.bar(uy, z)
+    plt.xlabel("year")
+    # plt.ylabel("Number of tweets")
+    plt.title("Number of tweets by year")
+    plt.show()
+
+    
 
 def get_hashtags_by_list(lst):
     toplist = ['#healthtalk', '#nhs', '#ebola', '#getfit','#latfit', '#obamacare', '#weightloss','#health', '#fitness', '#recipe']
