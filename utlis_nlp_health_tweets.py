@@ -690,6 +690,7 @@ def plot_sentiments_by_hashtags(sel_hash, list_hashtags):
         """
         Input(1): sel_hash = dataframe of hastags and sentiments for example:(POSITIVE, NEGATIVE, NEUTRAL)
         Input(2): list_hashtags: regexes of hashtags for which sentiments are to be studied
+        Output: Plot of distribution of sentiments by hashtags of interest.
         """
         # Counts of hastags and sentiment types
         h = sel_hash[["hashtags", "sentiment_type"]]
@@ -701,9 +702,7 @@ def plot_sentiments_by_hashtags(sel_hash, list_hashtags):
         hc  = (h.groupby(["hashtags", "sentiment_type"]).size().reset_index()
                        .rename(columns={0 : 'count'}))
 
-        list_hashtags = ['^#health\\b', '^#healthtalk\\b', '^#weightloss\\b',
-             '^#nhs\\b', '^#ebola\\b', '^#getfit\\b' , '^#latfit\\b' ,
-             '^obamacare\\b', '^#fitness\\b', '^#receipe\\b']
+
 
         for l in list_hashtags:
                 rslt_df = hc[hc['hashtags'].str.contains(r'^#weightloss\b')]
@@ -712,7 +711,7 @@ def plot_sentiments_by_hashtags(sel_hash, list_hashtags):
                 df_raw = pd.DataFrame(ab)
                 df_raw.plot.bar(rot=0, title=f"Tweet Distriubtion by{l}")
         plt.show()
-###############################################################            
+        
 def top_ranking_features(tfdif_matrix,features):
     """
     Output: list of top 10 ranking features
@@ -751,8 +750,68 @@ def build_tfdif_matrix(ngram_range, user_count, text):
     print(f"ngram_range is {ngram_range}")
     vec_matrix = vec.fit_transform(text)
     # get feature names
-    features = (vec.get_feature_names())
+    features = (vec.get_feature_names_out())
     return vec, vec_matrix, features
+
+
+def tfdif_matrix_with_ngram_hashtags(sel_hash):
+    """
+    Input: sel_hash = dataframe of tweets with hashtags of interest 
+    Output(1): tfdif matrix
+    Output(2): features of the matrix
+    Output(3): Plot of KMeans clustering results with siluette scores and inertias 
+    """
+    vec = []
+    vec_matrix = []
+    f_names = []
+    trfdata = []
+    vec_x0 = []
+    vec_x1 = []
+    x = [(1, 1), (2, 2), (3, 3)]
+    for v in x:
+        a, b, c = build_tfdif_matrix(ngram_range=v,
+                                     user_count=sel_hash["userid"],
+                                     text=sel_hash["lem_clean_text"])
+        trfdata.append(top_ranking_features(b, c))
+        d, e = pca_2_components(b)
+        vec.append(a)
+        vec_matrix.append(b)
+        f_names.append(c)
+        vec_x0.append(d)
+        vec_x1.append(e)
+
+    # Tuning parameters for Kmeans
+    ks = [2,5,10,15,20,25,30,35,40,45,50,55,60]
+
+    # track a couple of metrics
+    sil_scores = []
+    inertias = []
+
+    # fit the models, save the evaluation metrics from each run
+    for k in ks:
+        print('fitting model for {} clusters'.format(k))
+        model= KMeans(n_clusters=k,random_state=0)
+        model.fit(vec_matrix[2])
+        labels = model.labels_
+        sil_scores.append(silhouette_score(vec_matrix[2], labels))
+        inertias.append(model.inertia_)
+
+    # plot the quality metrics for inspection
+    fig, ax = plt.subplots(2, 1, sharex=True)
+    plt.subplot(211)
+    plt.plot(ks, inertias, 'o--')
+    #plt.ylabel('inertia')
+    plt.title('kmeans parameter search')
+    plt.subplot(212)
+    plt.plot(ks, sil_scores, '*--')
+    #plt.ylabel('silhouette score')
+    plt.xlabel('k')
+    labels = ['inertia', 'silhouette score']
+    fig.legend(labels=labels,
+           loc=2, prop={'size': 3})
+    plt.show()
+    return vec_matrix, f_names
+
 
 ##########################################################
 def get_top_kmeans_words(n_terms, X, clusters, vec):
