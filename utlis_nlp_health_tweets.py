@@ -245,7 +245,6 @@ def lemmatize_words(q):
         lms.append(lemmatizer.lemmatize(s[0], pos))
     return lms
 
-
 def tag_lemmatize_tweet_words(df_all):
     """
     IMPORTANT NOTE: nltk.download('omw-1.4')
@@ -401,6 +400,139 @@ def plot_dist_of_top_ngrams(df_all, n=15):
     top_gm.columns = ["n-grams","count"]
     fig = top_gm.plot(kind="bar", x="n-grams", y="count", title=f"Top {n} n-grams in all tweets")
     plt.tight_layout()
+    plt.show()
+
+def plot_bigrams(df_all ,n=5):
+    """
+    Input(1): cleaned, tagged and lemmatized dataframe
+    Input(2): the number of top bigrams to be plotted
+    Output: Plot the distribution of bigrams
+    """
+    # list of cleaned words with lemmatized all together 
+    le_fi = list(df_all["lemmatized_words"])
+    le_fil_wrds = [val for sublist in le_fi for val in sublist]
+    # object of type zip of bigrams from lemmatized filtered words
+    bg = ngrams(le_fil_wrds, 2)
+    # get the frequency of each bigram '
+    bigramFreq = Counter(bg)
+     # what are the ten most popular bigrams '
+    l = bigramFreq.most_common(n)
+    lBg = pd.DataFrame(l, columns=[f"top{n}bigrams", "frequency"])
+    lBg.plot.bar(x=f"top{n}bigrams", y="frequency", rot=45, title="Top trending words")
+    plt.tight_layout()
+    plt.show()
+
+def plot_trigrams(df_all ,n=5):
+    """
+    Input(1): cleaned, tagged and lemmatized dataframe
+    Input(2): the number of top trigrams to be plotted
+    Output: Plot the distribution of trigrams
+    """
+    # list of cleaned words with lemmatized all together 
+    le_fi = list(df_all["lemmatized_words"])
+    le_fil_wrds = [val for sublist in le_fi for val in sublist]
+    # object of type zip of bigrams from lemmatized filtered words
+    tg = ngrams(le_fil_wrds, 3)
+    # get the frequency of each bigram '
+    trigramFreq = Counter(tg)
+     # what are the ten most popular bigrams '
+    l = trigramFreq.most_common(n)
+    lBg = pd.DataFrame(l, columns=[f"top{n}trigrams", "frequency"])
+    lBg.plot.bar(x=f"top{n}trigrams", y="frequency", rot=45, title="Top trending words")
+    plt.tight_layout()
+    plt.show()
+
+def visualize_networks_of_top_ngrams(df_all, n):
+    """
+    Goal: Visualize networks of top grams
+    Input(1): cleaned, tagged and lemmatized dataframe
+    Input(2): the number of top ngrams whose connections have to be visualized
+    Output: plot of the networks of the top ngrams
+    """
+    # list of cleaned words with lemmatized all together 
+    le_fi = list(df_all["lemmatized_words"])
+    le_fil_wrds = [val for sublist in le_fi for val in sublist]
+    # calculate a range of ngrams using some handy functions
+    top_grams = Counter(everygrams(le_fil_wrds, min_len=2, max_len=4))
+    top_gm = pd.DataFrame(top_grams.most_common(n))
+    top_gm.columns = ["n-grams","count"]
+  
+    # Create dictionary of top grams and their counts
+    d = top_gm.set_index('n-grams').T.to_dict('records')
+
+    # Create network plot 
+    G = nx.Graph()
+
+    # Create connections between nodes
+    for k, v in d[0].items():
+        G.add_edge(k[0], k[1], weight=(v * 10))
+
+    G.add_node("ebola", weight=100)
+    fig, ax = plt.subplots(figsize=(10,8))
+    ax.set_title('Networks of top 15 ngrams in News tweets"')
+    pos = nx.spring_layout(G, k=2)
+    # Plot networks
+    nx.draw_networkx(G, pos,
+                     font_size=16,
+                     width=3,
+                     edge_color='grey',
+                     node_color='lightgreen',
+                     with_labels = False,
+                     ax=ax
+                     )
+    # Create offset labels
+    for key, value in pos.items():
+        x, y = value[0]+.135, value[1]+.045
+        ax.text(x, y,
+                s=key,
+                bbox=dict(facecolor='white', alpha=0.25),
+                horizontalalignment='center', fontsize=12)
+    plt.show()
+
+def sentiment_analysis(df_all):
+    """
+    Input: dataframe
+    Output: dataframe with sentiment analysis column
+    """
+    #Sentiment Analysis
+    df_all['scores'] = df_all['lem_clean_text'].apply(lambda Description: sid.polarity_scores(Description))
+    df_all.head()
+
+    df_all['compound'] = df_all['scores'].apply(lambda score_dict: score_dict['compound'])
+    df_all['sentiment_type']=''
+    df_all.loc[df_all.compound>0,'sentiment_type']='POSITIVE'
+    df_all.loc[df_all.compound==0,'sentiment_type']='NEUTRAL'
+    df_all.loc[df_all.compound<0,'sentiment_type']='NEGATIVE'
+    return df_all
+
+
+def plot_tweet_sentiment_percent(df_all):
+    """
+    Input: dataframe with sentiment analysis column
+    Output: Plot of distribution of tweet sentiment as percentage
+    """
+                    
+    df_sent_count = pd.DataFrame(df_all.groupby("sentiment_type").count().scores)
+    df_sent_count['percentage']= (df_sent_count['scores']/df_sent_count['scores'].sum()*100).round(1)
+    df_sent_count = df_sent_count.reset_index()
+    df_sent_count.plot(x= "sentiment_type", y = "percentage", kind='bar',title="sentiment analysis", rot=0)
+    plt.tight_layout()
+    plt.show()
+
+def plot_tweet_sentiment_topics(df_all, list_of_topics):
+    """
+    Input: dataframe with sentiment analysis column
+    Output: Plot of distribution of tweet sentiment about "ebola"as percentage
+    """
+    for i in list_of_topics:
+        mask = df_all['lem_clean_text'].str.contains(i)
+        b = df_all[mask][["date", "lem_clean_text", "scores", "sentiment_type"]]
+        # Distribution of tweet sentiment as percentage
+        bb = pd.DataFrame(b.groupby("sentiment_type").count().scores)
+        bb['percentage']= (bb['scores']/bb['scores'].sum()*100).round(1)
+        bb = bb.reset_index()
+        bb.plot(x= "sentiment_type", y = "percentage", kind='bar',title=f"sentiment analysis of {i} tweets", rot=0)
+        plt.tight_layout()
     plt.show()
 
 ###########################################################
