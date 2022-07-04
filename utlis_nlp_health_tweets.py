@@ -279,6 +279,27 @@ def plot_dist_of_processed_words(df_all):
     plt.tight_layout()
     plt.show()
 
+def create_wordcloud(df_all):
+    """
+    Input: cleaned, tagged and lemmatized dataframe
+    Output: plota Word Cloud with word frequencies
+    """
+    le_fi = list(df_all["lemmatized_words"])
+    le_fil_wrds = [val for sublist in le_fi for val in sublist]
+    # create a word frequency dictionary
+    wordfreq = Counter(le_fil_wrds)
+    # draw a Word Cloud with word frequencies
+    wordcloud = WordCloud(width=900,
+                          height=500,
+                          max_words=500,
+                          max_font_size=100,
+                          relative_scaling=0.5,
+                          colormap='Blues',
+                          normalize_plurals=True).generate_from_frequencies(wordfreq)
+    plt.figure(figsize=(17,14))
+    plt.imshow(wordcloud, interpolation='bilinear')
+    plt.axis("off")
+    plt.show()
 
 def plot_tweets_by_year(df_all):
     """
@@ -535,17 +556,90 @@ def plot_tweet_sentiment_topics(df_all, list_of_topics):
         plt.tight_layout()
     plt.show()
 
-###########################################################
-def get_top_kmeans_words(n_terms, X, clusters, vec):
-    """This function returns the keywords for each centroid of the KMeans"""
-    df = pd.DataFrame(X.todense()).groupby(clusters).mean() # groups the TF-IDF vector by cluster
-    terms = vec.get_feature_names() # access tf-idf terms
-    for i,r in df.iterrows():
-        print('\nCluster {}'.format(i))
-        print(','.join([terms[t] for t in np.argsort(r)[-n_terms:]])) # for each row of t
+def get_hashtags_by_list(lst):
+        """
+    Input: list of hashtags to interest
+    Output: dataframe of tweets with hashtags
+        """
+    toplist = ['#healthtalk', '#nhs', '#ebola', '#getfit','#latfit', '#obamacare', '#weightloss','#health', '#fitness', '#recipe']
+    for l in lst:
+        if l in toplist:
+            return True
+        else:
+            return False
 
+def dataframe_hashtags(df_all):
+    """
+    Input: cleaned, tagged and lemmatized dataframe
+    Output: dataframe of tweets with hashtags
+        """
+    df_hash = df_all[df_all.astype(str)['hashtags'] != '[]']
+    len(df_hash)
+    # 11344
+    mk = df_hash['hashtags'].apply(lambda x: get_hashtags_by_list(x))
+    sel_hash = df_hash[mk]
+    return sel_hash
+
+
+def tfidf(lsts):
+    """
+    Input: lsts = text lists
+    Output(1): cosine similarity matrix
+    Output(2): tfidf matrix
+    """
+    tfidf = TfidfVectorizer()
+    M = tfidf.fit_transform(lsts)
+    MT = M.todense().transpose()
+    csm = np.matmul(M.todense(), MT) # Cosine Similarity Matrix
+    csm = csm.round(decimals=4)
+    return csm, tfidf
+
+def max_cosine_similarity(csm, all_news):
+    """
+    Input(1):cosine similarity matrix
+    Input(2): all_news  = list of news agencies
+    Output: Maximum Cosine Similarity
+    """
+    maxcosine = []
+    # Find the max cosine value other than 1
+    ii = np.nonzero(csm == csm[csm < 1].max())[0]
+    news_source = []
+    for i in ii:
+        n =  all_news[i]
+        maxcosine.append(n)
+    return maxcosine
+
+def relation_new_agencies(df_all):
+    """
+    Input: cleaned, tagged and lemmatized dataframe
+    Output(1): Dict with keys :
+              lem_clean_csm, tfidf_lem_clean, features_text
+    Output(2): plot of Cosine similarity matrix of all the lemmatized_filtered tweets gropued by news source
+    """
+    df_sliced_dict = {}
+    for y in df_all['news_source'].unique():
+        df_sliced_dict[y] = df_all[ df_all['news_source'] == y ]
+
+    sep_docs = []
+    for k, v in df_sliced_dict.items():
+        sep_docs.append(" ".join(v["lem_clean_text"]))
+
+    lem_clean_csm, tfidf_lem_clean = tfidf(sep_docs)
+
+    features_text = tfidf_lem_clean.get_feature_names_out()
+    # Look at the cosine matrix
+    %pylab
+    plt.rcParams["figure.dpi"] = 500
+    plt.rc('image', cmap='nipy_spectral')
+    plt.matshow(lem_clean_csm)
+    plt.colorbar()
+    return {"lem_csm" : lem_clean_csm, "tfdif": tfidf_lem_clean, "features": features_text}
 
 def word_word_freq_lists(wordlist, n):
+    """
+    Input: cleaned, tagged and lemmatized dataframe
+    Output: 20 most common words
+    """
     count_cbc = Counter([item for item in wordlist])
     tmc_cbc = count_cbc.most_common(n)
     tmc_cbc_words = []
@@ -555,6 +649,36 @@ def word_word_freq_lists(wordlist, n):
         tmc_cbc_word_frequency.append(freq)
     return tmc_cbc_words, tmc_cbc_word_frequency
 
+def find_similar(df_all, max_cosine, n):
+    """
+    Input(1): df_all = cleaned, tagged and lemmatized dataframe
+    Input(2): max_cosine = maximum cosine similarity matrix
+    Input(3): n = number of common words
+    Output:  n most common words
+    """
+    words = []
+    wordfreq = []
+    for i in range(0, 2):
+        wl = [item for sublist in df_all[df_all['news_source'] == max_cosine[i]]['filtered_words']
+              for item in sublist]
+        q = word_word_freq_lists(wl, n)
+        words.append(q[0])
+        wordfreq.append(q[1])
+    return list(set(words[0]) & set(words[1]))
+            
+def top_ranking_features(tfdif_matrix,features):
+    """
+    Output: list of top 10 ranking features
+    
+    """
+    sums_vec = tfdif_matrix.sum(axis = 0)
+    data = []
+    for col, term in enumerate(features):
+        data.append( (term, sums_vec[0,col] ))
+    ranking = pd.DataFrame(data, columns = ['term','rank'])
+    words = (ranking.sort_values('rank', ascending = False))
+    print ("\n\nWords head : \n", words.head(10))
+    return data
 
 
 def build_tfdif_matrix(ngram_range, user_count, text):
@@ -583,20 +707,18 @@ def build_tfdif_matrix(ngram_range, user_count, text):
     features = (vec.get_feature_names())
     return vec, vec_matrix, features
 
+##########################################################
+def get_top_kmeans_words(n_terms, X, clusters, vec):
+    """This function returns the keywords for each centroid of the KMeans"""
+    df = pd.DataFrame(X.todense()).groupby(clusters).mean() # groups the TF-IDF vector by cluster
+    terms = vec.get_feature_names() # access tf-idf terms
+    for i,r in df.iterrows():
+        print('\nCluster {}'.format(i))
+        print(','.join([terms[t] for t in np.argsort(r)[-n_terms:]])) # for each row of t
 
-def top_ranking_features(tfdif_matrix,features):
-    """
-    Output: list of top 10 ranking features
-    
-    """
-    sums_vec = tfdif_matrix.sum(axis = 0)
-    data = []
-    for col, term in enumerate(features):
-        data.append( (term, sums_vec[0,col] ))
-    ranking = pd.DataFrame(data, columns = ['term','rank'])
-    words = (ranking.sort_values('rank', ascending = False))
-    print ("\n\nWords head : \n", words.head(10))
-    return data
+
+
+
 
 def pca_2_components(tfdif_matrix):
     # initialize PCA with 2 components
@@ -608,29 +730,6 @@ def pca_2_components(tfdif_matrix):
     x1 = pca_vecs[:, 1]
     return x0, x1
 
-def tfidf(lsts):
-    """
-    input: lsts = text lists
-
-    """
-    tfidf = TfidfVectorizer()
-    M = tfidf.fit_transform(lsts)
-    MT = M.todense().transpose()
-    csm = np.matmul(M.todense(), MT) # Cosine Similarity Matrix
-    csm = csm.round(decimals=4)
-    return csm, tfidf
-
-def max_cosine_similarity(csm, all_news):
-    """
-    # Input all_news  = list of news agencies
-    """
-    maxcosine = []
-    # Find the max cosine value other than 1
-    ii = np.nonzero(csm == csm[csm < 1].max())[0]
-    for i in ii:
-       n =  all_news[i]
-       maxcosine.append(n)
-    return maxcosine
 
 
 # Extracting the texts with certain words
