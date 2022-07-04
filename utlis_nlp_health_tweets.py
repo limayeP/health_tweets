@@ -557,7 +557,7 @@ def plot_tweet_sentiment_topics(df_all, list_of_topics):
     plt.show()
 
 def get_hashtags_by_list(lst):
-        """
+    """
     Input: list of hashtags to interest
     Output: dataframe of tweets with hashtags
         """
@@ -579,7 +579,6 @@ def dataframe_hashtags(df_all):
     mk = df_hash['hashtags'].apply(lambda x: get_hashtags_by_list(x))
     sel_hash = df_hash[mk]
     return sel_hash
-
 
 def tfidf(lsts):
     """
@@ -628,7 +627,6 @@ def relation_new_agencies(df_all):
 
     features_text = tfidf_lem_clean.get_feature_names_out()
     # Look at the cosine matrix
-    %pylab
     plt.rcParams["figure.dpi"] = 500
     plt.rc('image', cmap='nipy_spectral')
     plt.matshow(lem_clean_csm)
@@ -638,7 +636,7 @@ def relation_new_agencies(df_all):
 def word_word_freq_lists(wordlist, n):
     """
     Input: cleaned, tagged and lemmatized dataframe
-    Output: 20 most common words
+    Output: n most common words and their frequencies
     """
     count_cbc = Counter([item for item in wordlist])
     tmc_cbc = count_cbc.most_common(n)
@@ -649,12 +647,34 @@ def word_word_freq_lists(wordlist, n):
         tmc_cbc_word_frequency.append(freq)
     return tmc_cbc_words, tmc_cbc_word_frequency
 
+def top_n_similarity(df, csm, news_source, n,):
+        """
+        Input(1): df = cleaned, tagged and lemmatized dataframe
+        Input(2): csm = cosine similarity matrix
+        Input(3): list of new source agencies whose similarity is to be assessed
+        Input(4): number of pairs of similar docs
+        Output: List of list of similar docs(int this case news sources)
+        """
+        # The cosine similarity matrix is mirror image  matrix
+        # To get top five values, 10 will have to be found
+        x= 2*n
+        flat_csm = csm.flatten()
+        # sort flat_csm
+        flat_csm_sorted = np.sort(flat_csm)
+        s = flat_csm_sorted[flat_csm_sorted != 1]
+        top_n_values = np.flipud(s[-x:][::2])
+        most_similar_docs = []
+        for ix, t in enumerate(top_n_values):
+                a,b = np.where(csm == t)[0]
+                most_similar_docs.append([news_source[a],  news_source[b]])
+        return most_similar_docs
+
 def find_similar(df_all, max_cosine, n):
     """
     Input(1): df_all = cleaned, tagged and lemmatized dataframe
     Input(2): max_cosine = maximum cosine similarity matrix
     Input(3): n = number of common words
-    Output:  n most common words
+    Output:  n most common words between the two most similar word lists
     """
     words = []
     wordfreq = []
@@ -665,7 +685,34 @@ def find_similar(df_all, max_cosine, n):
         words.append(q[0])
         wordfreq.append(q[1])
     return list(set(words[0]) & set(words[1]))
-            
+
+def plot_sentiments_by_hashtags(sel_hash, list_hashtags):
+        """
+        Input(1): sel_hash = dataframe of hastags and sentiments for example:(POSITIVE, NEGATIVE, NEUTRAL)
+        Input(2): list_hashtags: regexes of hashtags for which sentiments are to be studied
+        """
+        # Counts of hastags and sentiment types
+        h = sel_hash[["hashtags", "sentiment_type"]]
+
+        # unlist the list in hashtags
+        h['hashtags'] = h['hashtags'].apply(lambda x: ' '.join(dict.fromkeys(x).keys()))
+
+        # groupby hashtags and sentiment types
+        hc  = (h.groupby(["hashtags", "sentiment_type"]).size().reset_index()
+                       .rename(columns={0 : 'count'}))
+
+        list_hashtags = ['^#health\\b', '^#healthtalk\\b', '^#weightloss\\b',
+             '^#nhs\\b', '^#ebola\\b', '^#getfit\\b' , '^#latfit\\b' ,
+             '^obamacare\\b', '^#fitness\\b', '^#receipe\\b']
+
+        for l in list_hashtags:
+                rslt_df = hc[hc['hashtags'].str.contains(r'^#weightloss\b')]
+                del rslt_df["count"]
+                ab = rslt_df['sentiment_type'].value_counts()
+                df_raw = pd.DataFrame(ab)
+                df_raw.plot.bar(rot=0, title=f"Tweet Distriubtion by{l}")
+        plt.show()
+###############################################################            
 def top_ranking_features(tfdif_matrix,features):
     """
     Output: list of top 10 ranking features
