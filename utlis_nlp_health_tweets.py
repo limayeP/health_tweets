@@ -822,10 +822,6 @@ def get_top_kmeans_words(n_terms, X, clusters, vec):
         print('\nCluster {}'.format(i))
         print(','.join([terms[t] for t in np.argsort(r)[-n_terms:]])) # for each row of t
 
-
-
-
-
 def pca_2_components(tfdif_matrix):
     # initialize PCA with 2 components
     pca = PCA(n_components=2, random_state=42)
@@ -835,8 +831,6 @@ def pca_2_components(tfdif_matrix):
     x0 = pca_vecs[:, 0]
     x1 = pca_vecs[:, 1]
     return x0, x1
-
-
 
 # Extracting the texts with certain words
 def word_in_text(word, text):
