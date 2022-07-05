@@ -44,6 +44,9 @@ sid = SentimentIntensityAnalyzer()
 ####################################################################################
 
 def read_tweet(fn, encoding="UTF-8"):
+    """
+    Goal: Read the tweet data
+    """
     file_id = open(fn, "r", encoding=encoding)
     lines = file_id.readlines()
     t = {"userid": [], "date": [], "text": []}
@@ -54,8 +57,26 @@ def read_tweet(fn, encoding="UTF-8"):
             t["userid"].append(s[0])
             t["date"].append(s[1])
             t["text"].append("".join(s[2:]))
-    df = pd.DataFrame.from_dict(t)
-    df.text = df.text.str.encode('ascii', 'ignore').str.decode('ascii')
+    bf = pd.DataFrame.from_dict(t)
+    bf.text = bf.text.str.encode('ascii', 'ignore').str.decode('ascii')
+    return bf
+
+def tweet_to_dataframe(datapn, file_extension = "*.txt"):
+    """
+    Input(1): datapn = "tweets" (folder where tweets are located)
+    Input(2): file_extension. The default is "*.txt"
+    Output: 
+    """
+    source = []
+    df = {}
+
+    for fn in glob.glob(os.path.join(datapn, "*.txt")):
+        file_name, file_extension = os.path.splitext(fn)
+        source = os.path.basename(file_name)
+        try:
+            df[source] = read_tweet(fn)
+        except UnicodeDecodeError:
+            df[source] = read_tweet(fn, encoding="ISO-8859-1")
     return df
 
 def remove_non_ascii(tweet):
@@ -63,6 +84,12 @@ def remove_non_ascii(tweet):
     tweet = re.sub(r"http?:\/\/[^\s]*", "", tweet)
     return tweet
 
+def get_hashes(w):
+    wt_words = []
+    for tweet in w.split(' '):
+        if tweet.startswith('#'):
+            wt_words.append(tweet.strip(','))
+    return wt_words
 
 def my_tokenizer(in_string):
     """
@@ -74,6 +101,51 @@ def my_tokenizer(in_string):
     tokens = tokenizer.tokenize(in_string)
     return tokens
 
+def organize_dataframe(df):
+    """
+    Input: dataframe to be organized
+    Ouput: dataframe with columns: 'userid', 'date', 'text', 
+                                  'news_source', 'hashtags', 'raw_words'
+           following was done to the dataframe
+          # joining the 16 dataframes by rows
+          # initilaize a dataframe list
+          # Remove non-ascii characters and the urls
+    """
+    dflist = []
+    # Create a new column
+    for k, v in df.items():
+        df[k]['news_source'] = k
+
+    for k, v in df.items():
+        dflist.append(v)
+    # joining the 16 dataframes by rows
+    df_all = pd.concat(dflist, axis=0)
+    # Remove non-ascii characters and the urls
+    df_all["text"] = df_all["text"].apply(remove_non_ascii)
+    # Replace blank spaces with NANs and remove rows qith NANs
+    df_all['text'].replace('', np.nan, inplace=True)
+    df_all.dropna(subset=['text'], inplace=True)
+    print(f"The total number of tweets are {len(df_all)}")
+
+    # Collect hashtags into the main dataframe
+    df_all["hashtags"] = df_all["text"].apply(lambda x: get_hashes(x))
+
+    # tokenize words without processing
+    df_all["raw_words"] = df_all["text"].apply((lambda x: my_tokenizer(x)))
+    return df_all
+
+def plot_word_distribution(df_all):
+    """
+    Input: raw organized dataframe
+    Output:  Distribution of top 10 words  without preprocessing
+    """
+    raw = [val for sublist in df_all["raw_words"] for val in sublist]
+    count_raw = Counter(raw).most_common(10)
+    df_raw = pd.DataFrame(count_raw, columns=['unprocessed words','frequency'])
+    df_raw.plot.bar(x="unprocessed words", y="frequency", rot=0, title="Top trending unprocessed words")
+    plt.tight_layout()
+    plt.ylabel = ""
+    plt.show()
 
 def clean_text(tweet):
     # To remove
@@ -133,27 +205,115 @@ def us(s):
                 lst.append(i)
     return lst
 
-def get_hashes(w):
-    wt_words = []
-    for tweet in w.split(' '):
-        if tweet.startswith('#'):
-            wt_words.append(tweet.strip(','))
-    return wt_words
 
-def get_hashtags_by_list(lst):
-    toplist = ['#healthtalk', '#nhs', '#ebola', '#getfit','#latfit', '#obamacare', '#weightloss','#health', '#fitness', '#recipe']
-    for l in lst:
-        if l in toplist:
-            return True
-        else:
-            return False
+def clean_tweets(df_all):
+    """
+    Input: dataframe to be cleaned
+    Output: dataframe where th following was done:
+            tokenize and remove stopwords
+            keep US and UK and remove 2 letter words
+            filter out empty list of words
+            change date to datatime format
+    """
+    # Cleaning tweets
+    df_all["filtered_text"] = df_all["text"].apply(lambda x: clean_text(x))
+    # Remove rows with empty strings
+    df_all['filtered_text'].replace('', np.nan, inplace=True)
+    df_all.dropna(subset=['filtered_text'], inplace=True)
+    # Tokenize and remove stopwords
+    df_all["filtered_words"] = df_all["filtered_text"].apply(lambda x: remove_stopword_sentiment(my_tokenizer(x)))
+    # Remove empty list of words
+    df_all["filtered_words"] = df_all["filtered_words"].apply(lambda y: np.nan if len(y)==0 else y)
+    df_all.dropna(subset=['filtered_words'], inplace=True)
+    # Keep US and UK and remove 2 letter words
+    df_all["filtered_words"] = df_all["filtered_words"].apply(lambda x: us(x))
+    # join filtered words to get cleantext
+    df_all["clean_text"] = df_all["filtered_words"].apply(lambda x: " ".join(x))
+    # change date to datatime format
+    df_all["date"] =df_all["date"].apply(lambda x: pd.to_datetime(x))
+    return df_all
 
-        
-def find_hash(sentence):
-    if re.findall(r'#ebola'," ".join(sentence), re.IGNORECASE):
-        return True
-    else:
-        return False
+def lemmatize_words(q):
+    lemmatizer = WordNetLemmatizer()
+    lms = []
+    pos = 'a'
+    for s in q:
+        if s[1].startswith('NN'):
+            pos = 'n'
+        elif s[1].startswith('VB'):
+            pos = 'v'
+        lms.append(lemmatizer.lemmatize(s[0], pos))
+    return lms
+
+def tag_lemmatize_tweet_words(df_all):
+    """
+    IMPORTANT NOTE: nltk.download('omw-1.4')
+    Input: cleaned dataframe
+    Output: cleaned, tagged and lemmatized dataframe
+    """
+    # Get tagging and lemmatizing tweet words
+    df_all["tagged_words"] = [pos_tag(sent) for sent in df_all['filtered_words']]
+    df_all["lemmatized_words"] = df_all["tagged_words"].apply(lambda x: lemmatize_words(x))
+    # Remove empty list of words
+    df_all["lemmatized_words"] = df_all["lemmatized_words"].apply(lambda y: np.nan if len(y)==0 else y)
+    df_all.dropna(subset=['lemmatized_words'], inplace=True)
+
+    # Each tweet cleaned and Lemmatized 
+    df_all["lem_clean_text"] = df_all["lemmatized_words"].apply(lambda x: " ".join(x))
+    return df_all
+
+def plot_dist_of_processed_words(df_all):
+    """
+    Input: cleaned, tagged and lemmatized dataframe
+    Output: Plot the distribution of cleaned, lemmatized words
+    """
+    # list of cleaned words with lemmatized all together 
+    le_fi = list(df_all["lemmatized_words"])
+    le_fil_wrds = [val for sublist in le_fi for val in sublist]
+
+    le_fil =  Counter(le_fil_wrds)
+    le_fil_count = Counter(le_fil_wrds).most_common(15)
+
+    le_df_fil = pd.DataFrame(le_fil_count, columns=['processed words','frequency'])
+    le_df_fil.plot.bar(x="processed words", y="frequency", rot=70, title="Top trending words")
+    plt.tight_layout()
+    plt.show()
+
+def create_wordcloud(df_all):
+    """
+    Input: cleaned, tagged and lemmatized dataframe
+    Output: plota Word Cloud with word frequencies
+    """
+    le_fi = list(df_all["lemmatized_words"])
+    le_fil_wrds = [val for sublist in le_fi for val in sublist]
+    # create a word frequency dictionary
+    wordfreq = Counter(le_fil_wrds)
+    # draw a Word Cloud with word frequencies
+    wordcloud = WordCloud(width=900,
+                          height=500,
+                          max_words=500,
+                          max_font_size=100,
+                          relative_scaling=0.5,
+                          colormap='Blues',
+                          normalize_plurals=True).generate_from_frequencies(wordfreq)
+    plt.figure(figsize=(17,14))
+    plt.imshow(wordcloud, interpolation='bilinear')
+    plt.axis("off")
+    plt.show()
+
+def plot_tweets_by_year(df_all):
+    """
+    Input: cleaned, tagged and lemmatized dataframe
+    Output: Plot the distribution of cleaned, lemmatized words
+    """
+    y = df_all["date"].dt.year
+    z = df_all["lem_clean_text"].groupby(y).count()
+    uy = list(y.unique())
+    plt.bar(uy, z)
+    plt.xlabel("year")
+    # plt.ylabel("Number of tweets")
+    plt.title("Number of tweets by year")
+    plt.show()
 
 def eda(df):
     terms = {"raw": [], "hashed": [],"handles":[]}
@@ -170,17 +330,314 @@ def eda(df):
             terms["handles"].append(re.sub(r":", "", w.lower()))
     return terms
 
+def get_raw_tweets_hastags_handles(df_all):
+    """
+    Input: cleaned, tagged and lemmatized dataframe
+    Output: subsetted dataframe with hashtags_handles
+    """
+    terms = eda(df_all)
+    return terms
 
-def get_top_kmeans_words(n_terms, X, clusters, vec):
-    """This function returns the keywords for each centroid of the KMeans"""
-    df = pd.DataFrame(X.todense()).groupby(clusters).mean() # groups the TF-IDF vector by cluster
-    terms = vec.get_feature_names() # access tf-idf terms
-    for i,r in df.iterrows():
-        print('\nCluster {}'.format(i))
-        print(','.join([terms[t] for t in np.argsort(r)[-n_terms:]])) # for each row of t
+def plot_hashtags_piechart(terms):
+    """
+    Input: subsetted dataframe with hashtags_handles
+    Output: Plot the distribution of hashtags
+    """
+    # Plot hashtags
+    df_hashtags = pd.DataFrame({"hashtag": terms["hashed"]})
+    df_hashtags['hashtag'].value_counts().head(10).plot(kind='pie',
+                                                        autopct='%.1f%%', radius=1.2)
+    plt.title('Top Trending Hashtags')
+    plt.tight_layout()
+    plt.show()
+    
+def plot_handles_piechart(terms):
+    """
+    Input: subsetted dataframe with hashtags and handles
+    Output: Plot the distribution of handles (also known as mentions)
+    """
+    # Plot distribution of mentions or handles
+    df_handles = pd.DataFrame({"handles": terms["handles"]})
+    df_handles['handles'].value_counts().head(10).plot(kind='pie',
+                                                        autopct='%.1f%%', radius=1.2)
+    plt.title('Top Trending Twitter Handles')
+    plt.tight_layout()
+    #plt.ylabel('')
+    plt.show()
 
+def find_hash(sentence):
+    if re.findall(r'#ebola'," ".join(sentence), re.IGNORECASE):
+        return True
+    else:
+        return False
+
+def plot_hashtag_ebola_by_year(df_all):
+    """
+    Input: subsetted dataframe with hashtags_handles
+    Output: Plot the distribution of #ebola
+    """
+    # Subset data with #Ebola containing hashtags
+    mask = df_all["hashtags"].apply(lambda x: find_hash(x))
+    mdf = df_all[mask == True]
+
+    # Plot number of tweets containing #Ebola by year
+    fig, ax = plt.subplots()
+    yd = mdf["date"].dt.year
+    zd = mdf['text'].groupby(yd).count()
+    uyd = yd.unique()
+    ax.bar(uyd, zd)
+    ax.set_xticks(uyd)
+    plt.xlabel("year")
+    # plt.ylabel("Number of Ebola tweets")
+    plt.title("Number of Ebola tweets by year")
+    plt.show()
+
+def dist_tweets_by_news_sources(df_all):
+    """
+    Input: subsetted dataframe with hashtags_handles
+    Output: Plot of the distribution of tweets from new sources
+    """
+    nz = df_all['lem_clean_text'].groupby(df_all["news_source"]).count()
+    nz = pd.DataFrame(nz)
+    nz.columns = ["scores"]
+    nz['percentage'] = (nz["scores"]/nz["scores"].sum()*100).round(1)
+    nz = nz.reset_index()
+    nz.plot(x= "news_source", y = "percentage", kind='bar',title="Tweet distribution by newspaper", rot=90)
+    plt.tight_layout()
+    plt.show()
+
+def plot_dist_of_top_ngrams(df_all, n=15):
+    """
+    Input(1): cleaned, tagged and lemmatized dataframe
+    Input(2): the number of top ngrams to be plotted
+    Output: Plot the distribution of ngrams
+    """
+    # list of cleaned words with lemmatized all together 
+    le_fi = list(df_all["lemmatized_words"])
+    le_fil_wrds = [val for sublist in le_fi for val in sublist]
+    # calculate a range of ngrams using some handy functions
+    top_grams = Counter(everygrams(le_fil_wrds, min_len=2, max_len=4))
+    top_gm = pd.DataFrame(top_grams.most_common(n))
+    top_gm.columns = ["n-grams","count"]
+    fig = top_gm.plot(kind="bar", x="n-grams", y="count", title=f"Top {n} n-grams in all tweets")
+    plt.tight_layout()
+    plt.show()
+
+def plot_bigrams(df_all ,n=5):
+    """
+    Input(1): cleaned, tagged and lemmatized dataframe
+    Input(2): the number of top bigrams to be plotted
+    Output: Plot the distribution of bigrams
+    """
+    # list of cleaned words with lemmatized all together 
+    le_fi = list(df_all["lemmatized_words"])
+    le_fil_wrds = [val for sublist in le_fi for val in sublist]
+    # object of type zip of bigrams from lemmatized filtered words
+    bg = ngrams(le_fil_wrds, 2)
+    # get the frequency of each bigram '
+    bigramFreq = Counter(bg)
+     # what are the ten most popular bigrams '
+    l = bigramFreq.most_common(n)
+    lBg = pd.DataFrame(l, columns=[f"top{n}bigrams", "frequency"])
+    lBg.plot.bar(x=f"top{n}bigrams", y="frequency", rot=45, title="Top trending words")
+    plt.tight_layout()
+    plt.show()
+
+def plot_trigrams(df_all ,n=5):
+    """
+    Input(1): cleaned, tagged and lemmatized dataframe
+    Input(2): the number of top trigrams to be plotted
+    Output: Plot the distribution of trigrams
+    """
+    # list of cleaned words with lemmatized all together 
+    le_fi = list(df_all["lemmatized_words"])
+    le_fil_wrds = [val for sublist in le_fi for val in sublist]
+    # object of type zip of bigrams from lemmatized filtered words
+    tg = ngrams(le_fil_wrds, 3)
+    # get the frequency of each bigram '
+    trigramFreq = Counter(tg)
+     # what are the ten most popular bigrams '
+    l = trigramFreq.most_common(n)
+    lBg = pd.DataFrame(l, columns=[f"top{n}trigrams", "frequency"])
+    lBg.plot.bar(x=f"top{n}trigrams", y="frequency", rot=45, title="Top trending words")
+    plt.tight_layout()
+    plt.show()
+
+def visualize_networks_of_top_ngrams(df_all, n):
+    """
+    Goal: Visualize networks of top grams
+    Input(1): cleaned, tagged and lemmatized dataframe
+    Input(2): the number of top ngrams whose connections have to be visualized
+    Output: plot of the networks of the top ngrams
+    """
+    # list of cleaned words with lemmatized all together 
+    le_fi = list(df_all["lemmatized_words"])
+    le_fil_wrds = [val for sublist in le_fi for val in sublist]
+    # calculate a range of ngrams using some handy functions
+    top_grams = Counter(everygrams(le_fil_wrds, min_len=2, max_len=4))
+    top_gm = pd.DataFrame(top_grams.most_common(n))
+    top_gm.columns = ["n-grams","count"]
+  
+    # Create dictionary of top grams and their counts
+    d = top_gm.set_index('n-grams').T.to_dict('records')
+
+    # Create network plot 
+    G = nx.Graph()
+
+    # Create connections between nodes
+    for k, v in d[0].items():
+        G.add_edge(k[0], k[1], weight=(v * 10))
+
+    G.add_node("ebola", weight=100)
+    fig, ax = plt.subplots(figsize=(10,8))
+    ax.set_title('Networks of top 15 ngrams in News tweets"')
+    pos = nx.spring_layout(G, k=2)
+    # Plot networks
+    nx.draw_networkx(G, pos,
+                     font_size=16,
+                     width=3,
+                     edge_color='grey',
+                     node_color='lightgreen',
+                     with_labels = False,
+                     ax=ax
+                     )
+    # Create offset labels
+    for key, value in pos.items():
+        x, y = value[0]+.135, value[1]+.045
+        ax.text(x, y,
+                s=key,
+                bbox=dict(facecolor='white', alpha=0.25),
+                horizontalalignment='center', fontsize=12)
+    plt.show()
+
+def sentiment_analysis(df_all):
+    """
+    Input: dataframe
+    Output: dataframe with sentiment analysis column
+    """
+    #Sentiment Analysis
+    df_all['scores'] = df_all['lem_clean_text'].apply(lambda Description: sid.polarity_scores(Description))
+    df_all.head()
+
+    df_all['compound'] = df_all['scores'].apply(lambda score_dict: score_dict['compound'])
+    df_all['sentiment_type']=''
+    df_all.loc[df_all.compound>0,'sentiment_type']='POSITIVE'
+    df_all.loc[df_all.compound==0,'sentiment_type']='NEUTRAL'
+    df_all.loc[df_all.compound<0,'sentiment_type']='NEGATIVE'
+    return df_all
+
+
+def plot_tweet_sentiment_percent(df_all):
+    """
+    Input: dataframe with sentiment analysis column
+    Output: Plot of distribution of tweet sentiment as percentage
+    """
+                    
+    df_sent_count = pd.DataFrame(df_all.groupby("sentiment_type").count().scores)
+    df_sent_count['percentage']= (df_sent_count['scores']/df_sent_count['scores'].sum()*100).round(1)
+    df_sent_count = df_sent_count.reset_index()
+    df_sent_count.plot(x= "sentiment_type", y = "percentage", kind='bar',title="sentiment analysis", rot=0)
+    plt.tight_layout()
+    plt.show()
+
+def plot_tweet_sentiment_topics(df_all, list_of_topics):
+    """
+    Input: dataframe with sentiment analysis column
+    Output: Plot of distribution of tweet sentiment about "ebola"as percentage
+    """
+    for i in list_of_topics:
+        mask = df_all['lem_clean_text'].str.contains(i)
+        b = df_all[mask][["date", "lem_clean_text", "scores", "sentiment_type"]]
+        # Distribution of tweet sentiment as percentage
+        bb = pd.DataFrame(b.groupby("sentiment_type").count().scores)
+        bb['percentage']= (bb['scores']/bb['scores'].sum()*100).round(1)
+        bb = bb.reset_index()
+        bb.plot(x= "sentiment_type", y = "percentage", kind='bar',title=f"sentiment analysis of {i} tweets", rot=0)
+        plt.tight_layout()
+    plt.show()
+
+def get_hashtags_by_list(lst):
+    """
+    Input: list of hashtags to interest
+    Output: dataframe of tweets with hashtags
+        """
+    toplist = ['#healthtalk', '#nhs', '#ebola', '#getfit','#latfit', '#obamacare', '#weightloss','#health', '#fitness', '#recipe']
+    for l in lst:
+        if l in toplist:
+            return True
+        else:
+            return False
+
+def dataframe_hashtags(df_all):
+    """
+    Input: cleaned, tagged and lemmatized dataframe
+    Output: dataframe of tweets with hashtags
+        """
+    df_hash = df_all[df_all.astype(str)['hashtags'] != '[]']
+    len(df_hash)
+    # 11344
+    mk = df_hash['hashtags'].apply(lambda x: get_hashtags_by_list(x))
+    sel_hash = df_hash[mk]
+    return sel_hash
+
+def tfidf(lsts):
+    """
+    Input: lsts = text lists
+    Output(1): cosine similarity matrix
+    Output(2): tfidf matrix
+    """
+    tfidf = TfidfVectorizer()
+    M = tfidf.fit_transform(lsts)
+    MT = M.todense().transpose()
+    csm = np.matmul(M.todense(), MT) # Cosine Similarity Matrix
+    csm = csm.round(decimals=4)
+    return csm, tfidf
+
+def max_cosine_similarity(csm, all_news):
+    """
+    Input(1):cosine similarity matrix
+    Input(2): all_news  = list of news agencies
+    Output: Maximum Cosine Similarity
+    """
+    maxcosine = []
+    # Find the max cosine value other than 1
+    ii = np.nonzero(csm == csm[csm < 1].max())[0]
+    news_source = []
+    for i in ii:
+        n =  all_news[i]
+        maxcosine.append(n)
+    return maxcosine
+
+def relation_new_agencies(df_all):
+    """
+    Input: cleaned, tagged and lemmatized dataframe
+    Output(1): Dict with keys :
+              lem_clean_csm, tfidf_lem_clean, features_text
+    Output(2): plot of Cosine similarity matrix of all the lemmatized_filtered tweets gropued by news source
+    """
+    df_sliced_dict = {}
+    for y in df_all['news_source'].unique():
+        df_sliced_dict[y] = df_all[ df_all['news_source'] == y ]
+
+    sep_docs = []
+    for k, v in df_sliced_dict.items():
+        sep_docs.append(" ".join(v["lem_clean_text"]))
+
+    lem_clean_csm, tfidf_lem_clean = tfidf(sep_docs)
+
+    features_text = tfidf_lem_clean.get_feature_names_out()
+    # Look at the cosine matrix
+    plt.rcParams["figure.dpi"] = 500
+    plt.rc('image', cmap='nipy_spectral')
+    plt.matshow(lem_clean_csm)
+    plt.colorbar()
+    return {"lem_csm" : lem_clean_csm, "tfdif": tfidf_lem_clean, "features": features_text}
 
 def word_word_freq_lists(wordlist, n):
+    """
+    Input: cleaned, tagged and lemmatized dataframe
+    Output: n most common words and their frequencies
+    """
     count_cbc = Counter([item for item in wordlist])
     tmc_cbc = count_cbc.most_common(n)
     tmc_cbc_words = []
@@ -190,18 +647,84 @@ def word_word_freq_lists(wordlist, n):
         tmc_cbc_word_frequency.append(freq)
     return tmc_cbc_words, tmc_cbc_word_frequency
 
+def top_n_similarity(df, csm, news_source, n,):
+        """
+        Input(1): df = cleaned, tagged and lemmatized dataframe
+        Input(2): csm = cosine similarity matrix
+        Input(3): list of new source agencies whose similarity is to be assessed
+        Input(4): number of pairs of similar docs
+        Output: List of list of similar docs(int this case news sources)
+        """
+        # The cosine similarity matrix is mirror image  matrix
+        # To get top five values, 10 will have to be found
+        x= 2*n
+        flat_csm = csm.flatten()
+        # sort flat_csm
+        flat_csm_sorted = np.sort(flat_csm)
+        s = flat_csm_sorted[flat_csm_sorted != 1]
+        top_n_values = np.flipud(s[-x:][::2])
+        most_similar_docs = []
+        for ix, t in enumerate(top_n_values):
+                a,b = np.where(csm == t)[0]
+                most_similar_docs.append([news_source[a],  news_source[b]])
+        return most_similar_docs
 
-def lemmatize_words(q):
-    lemmatizer = WordNetLemmatizer()
-    lms = []
-    pos = 'a'
-    for s in q:
-        if s[1].startswith('NN'):
-            pos = 'n'
-        elif s[1].startswith('VB'):
-            pos = 'v'
-        lms.append(lemmatizer.lemmatize(s[0], pos))
-    return lms
+def find_similar(df_all, max_cosine, n):
+    """
+    Input(1): df_all = cleaned, tagged and lemmatized dataframe
+    Input(2): max_cosine = maximum cosine similarity matrix
+    Input(3): n = number of common words
+    Output:  n most common words between the two most similar word lists
+    """
+    words = []
+    wordfreq = []
+    for i in range(0, 2):
+        wl = [item for sublist in df_all[df_all['news_source'] == max_cosine[i]]['filtered_words']
+              for item in sublist]
+        q = word_word_freq_lists(wl, n)
+        words.append(q[0])
+        wordfreq.append(q[1])
+    return list(set(words[0]) & set(words[1]))
+
+def plot_sentiments_by_hashtags(sel_hash, list_hashtags):
+        """
+        Input(1): sel_hash = dataframe of hastags and sentiments for example:(POSITIVE, NEGATIVE, NEUTRAL)
+        Input(2): list_hashtags: regexes of hashtags for which sentiments are to be studied
+        Output: Plot of distribution of sentiments by hashtags of interest.
+        """
+        # Counts of hastags and sentiment types
+        h = sel_hash[["hashtags", "sentiment_type"]]
+
+        # unlist the list in hashtags
+        h['hashtags'] = h['hashtags'].apply(lambda x: ' '.join(dict.fromkeys(x).keys()))
+
+        # groupby hashtags and sentiment types
+        hc  = (h.groupby(["hashtags", "sentiment_type"]).size().reset_index()
+                       .rename(columns={0 : 'count'}))
+
+
+
+        for l in list_hashtags:
+                rslt_df = hc[hc['hashtags'].str.contains(r'^#weightloss\b')]
+                del rslt_df["count"]
+                ab = rslt_df['sentiment_type'].value_counts()
+                df_raw = pd.DataFrame(ab)
+                df_raw.plot.bar(rot=0, title=f"Tweet Distriubtion by{l}")
+        plt.show()
+        
+def top_ranking_features(tfdif_matrix,features):
+    """
+    Output: list of top 10 ranking features
+    
+    """
+    sums_vec = tfdif_matrix.sum(axis = 0)
+    data = []
+    for col, term in enumerate(features):
+        data.append( (term, sums_vec[0,col] ))
+    ranking = pd.DataFrame(data, columns = ['term','rank'])
+    words = (ranking.sort_values('rank', ascending = False))
+    print ("\n\nWords head : \n", words.head(10))
+    return data
 
 
 def build_tfdif_matrix(ngram_range, user_count, text):
@@ -227,23 +750,77 @@ def build_tfdif_matrix(ngram_range, user_count, text):
     print(f"ngram_range is {ngram_range}")
     vec_matrix = vec.fit_transform(text)
     # get feature names
-    features = (vec.get_feature_names())
+    features = (vec.get_feature_names_out())
     return vec, vec_matrix, features
 
 
-def top_ranking_features(tfdif_matrix,features):
+def tfdif_matrix_with_ngram_hashtags(sel_hash):
     """
-    Output: list of top 10 ranking features
-    
+    Input: sel_hash = dataframe of tweets with hashtags of interest 
+    Output(1): tfdif matrix
+    Output(2): features of the matrix
+    Output(3): Plot of KMeans clustering results with siluette scores and inertias 
     """
-    sums_vec = tfdif_matrix.sum(axis = 0)
-    data = []
-    for col, term in enumerate(features):
-        data.append( (term, sums_vec[0,col] ))
-    ranking = pd.DataFrame(data, columns = ['term','rank'])
-    words = (ranking.sort_values('rank', ascending = False))
-    print ("\n\nWords head : \n", words.head(10))
-    return data
+    vec = []
+    vec_matrix = []
+    f_names = []
+    trfdata = []
+    vec_x0 = []
+    vec_x1 = []
+    x = [(1, 1), (2, 2), (3, 3)]
+    for v in x:
+        a, b, c = build_tfdif_matrix(ngram_range=v,
+                                     user_count=sel_hash["userid"],
+                                     text=sel_hash["lem_clean_text"])
+        trfdata.append(top_ranking_features(b, c))
+        d, e = pca_2_components(b)
+        vec.append(a)
+        vec_matrix.append(b)
+        f_names.append(c)
+        vec_x0.append(d)
+        vec_x1.append(e)
+
+    # Tuning parameters for Kmeans
+    ks = [2,5,10,15,20,25,30,35,40,45,50,55,60]
+
+    # track a couple of metrics
+    sil_scores = []
+    inertias = []
+
+    # fit the models, save the evaluation metrics from each run
+    for k in ks:
+        print('fitting model for {} clusters'.format(k))
+        model= KMeans(n_clusters=k,random_state=0)
+        model.fit(vec_matrix[2])
+        labels = model.labels_
+        sil_scores.append(silhouette_score(vec_matrix[2], labels))
+        inertias.append(model.inertia_)
+
+    # plot the quality metrics for inspection
+    fig, ax = plt.subplots(2, 1, sharex=True)
+    plt.subplot(211)
+    plt.plot(ks, inertias, 'o--')
+    #plt.ylabel('inertia')
+    plt.title('kmeans parameter search')
+    plt.subplot(212)
+    plt.plot(ks, sil_scores, '*--')
+    #plt.ylabel('silhouette score')
+    plt.xlabel('k')
+    labels = ['inertia', 'silhouette score']
+    fig.legend(labels=labels,
+           loc=2, prop={'size': 3})
+    plt.show()
+    return vec_matrix, f_names
+
+
+##########################################################
+def get_top_kmeans_words(n_terms, X, clusters, vec):
+    """This function returns the keywords for each centroid of the KMeans"""
+    df = pd.DataFrame(X.todense()).groupby(clusters).mean() # groups the TF-IDF vector by cluster
+    terms = vec.get_feature_names() # access tf-idf terms
+    for i,r in df.iterrows():
+        print('\nCluster {}'.format(i))
+        print(','.join([terms[t] for t in np.argsort(r)[-n_terms:]])) # for each row of t
 
 def pca_2_components(tfdif_matrix):
     # initialize PCA with 2 components
@@ -254,31 +831,6 @@ def pca_2_components(tfdif_matrix):
     x0 = pca_vecs[:, 0]
     x1 = pca_vecs[:, 1]
     return x0, x1
-
-def tfidf(lsts):
-    """
-    input: lsts = text lists
-
-    """
-    tfidf = TfidfVectorizer()
-    M = tfidf.fit_transform(lsts)
-    MT = M.todense().transpose()
-    csm = np.matmul(M.todense(), MT) # Cosine Similarity Matrix
-    csm = csm.round(decimals=4)
-    return csm, tfidf
-
-def max_cosine_similarity(csm, all_news):
-    """
-    # Input all_news  = list of news agencies
-    """
-    maxcosine = []
-    # Find the max cosine value other than 1
-    ii = np.nonzero(csm == csm[csm < 1].max())[0]
-    for i in ii:
-       n =  all_news[i]
-       maxcosine.append(n)
-    return maxcosine
-
 
 # Extracting the texts with certain words
 def word_in_text(word, text):
